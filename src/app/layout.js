@@ -16,6 +16,15 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "SnipStash - Smart Code Snippet Organizer",
   description: "Save, organize, and access your code snippets with automatic categorization",
+  icons: {
+    icon: '/file.svg',
+    shortcut: '/file.svg',
+    apple: '/file.svg',
+    other: {
+      rel: 'apple-touch-icon',
+      url: '/file.svg',
+    },
+  },
 };
 
 export default function RootLayout({ children }) {
