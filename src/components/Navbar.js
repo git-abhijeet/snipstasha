@@ -11,6 +11,8 @@ export default function Navbar() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const { data: session, status } = useSession();
     const isAuthenticated = status === "authenticated";
+    const isLoginPage = pathname === '/login';
+    const isSignupPage = pathname === '/signup';
 
     const handleSignOut = () => {
         signOut({ callbackUrl: '/' });
@@ -35,8 +37,8 @@ export default function Navbar() {
                             <Link
                                 href="/"
                                 className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${pathname === '/'
-                                        ? 'border-blue-500 text-gray-900 dark:text-white'
-                                        : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700'
+                                    ? 'border-blue-500 text-gray-900 dark:text-white'
+                                    : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700'
                                     }`}
                             >
                                 Home
@@ -46,8 +48,8 @@ export default function Navbar() {
                                 <Link
                                     href="/dashboard"
                                     className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${pathname === '/dashboard' || pathname.startsWith('/dashboard/')
-                                            ? 'border-blue-500 text-gray-900 dark:text-white'
-                                            : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700'
+                                        ? 'border-blue-500 text-gray-900 dark:text-white'
+                                        : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700'
                                         }`}
                                 >
                                     Dashboard
@@ -71,22 +73,23 @@ export default function Navbar() {
                             </>
                         ) : (
                             <>
-                                <Link
-                                    href="/login"
-                                    className={`px-3 py-2 rounded-md text-sm font-medium ${pathname === '/login'
-                                            ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white'
-                                            : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                                        }`}
-                                >
-                                    Log in
-                                </Link>
+                                {!isLoginPage && (
+                                    <Link
+                                        href="/login"
+                                        className="px-3 py-2 rounded-md text-sm font-medium text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                        Log in
+                                    </Link>
+                                )}
 
-                                <Link
-                                    href="/signup"
-                                    className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                                >
-                                    Sign up
-                                </Link>
+                                {!isSignupPage && (
+                                    <Link
+                                        href="/signup"
+                                        className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        Sign up
+                                    </Link>
+                                )}
                             </>
                         )}
                     </div>
@@ -120,8 +123,8 @@ export default function Navbar() {
                         <Link
                             href="/"
                             className={`block px-3 py-2 rounded-md text-base font-medium ${pathname === '/'
-                                    ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-gray-800 dark:text-white'
-                                    : 'border-transparent text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
+                                ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-gray-800 dark:text-white'
+                                : 'border-transparent text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
                                 }`}
                         >
                             Home
@@ -131,8 +134,8 @@ export default function Navbar() {
                             <Link
                                 href="/dashboard"
                                 className={`block px-3 py-2 rounded-md text-base font-medium ${pathname === '/dashboard' || pathname.startsWith('/dashboard/')
-                                        ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-gray-800 dark:text-white'
-                                        : 'border-transparent text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
+                                    ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-gray-800 dark:text-white'
+                                    : 'border-transparent text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
                                     }`}
                             >
                                 Dashboard
@@ -155,22 +158,23 @@ export default function Navbar() {
                             </div>
                         ) : (
                             <div className="space-y-1">
-                                <Link
-                                    href="/login"
-                                    className={`block px-4 py-2 text-base font-medium ${pathname === '/login'
-                                            ? 'bg-blue-50 text-blue-700 dark:bg-gray-800 dark:text-white'
-                                            : 'text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
-                                        }`}
-                                >
-                                    Log in
-                                </Link>
+                                {!isLoginPage && (
+                                    <Link
+                                        href="/login"
+                                        className="block px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                                    >
+                                        Log in
+                                    </Link>
+                                )}
 
-                                <Link
-                                    href="/signup"
-                                    className="block px-4 py-2 text-base font-medium text-white bg-blue-600 hover:bg-blue-700"
-                                >
-                                    Sign up
-                                </Link>
+                                {!isSignupPage && (
+                                    <Link
+                                        href="/signup"
+                                        className="block px-4 py-2 text-base font-medium text-white bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        Sign up
+                                    </Link>
+                                )}
                             </div>
                         )}
                     </div>
