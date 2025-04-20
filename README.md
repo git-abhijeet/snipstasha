@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# SnipStash - Code Snippet Organizer with Smart Categorization
+
+SnipStash is a powerful web application that helps developers save, categorize, and organize code snippets. The app automatically analyzes your code to tag it appropriately, making it easier to find snippets when you need them.
+
+## Features
+
+-   **Save Code Snippets** - Store reusable code snippets with title, description, and language
+-   **Smart Auto-Categorization** - Snippets are automatically tagged based on their content
+-   **Language Detection** - Automatically identifies programming languages
+-   **Search & Filter** - Quickly find snippets by language, tag, or content
+-   **User Authentication** - Secure login/signup to manage your personal snippet collection
+-   **One-Click Copy** - Easily copy snippets to your clipboard
+
+## Tech Stack
+
+-   **Frontend**: Next.js, React, TailwindCSS
+-   **Backend**: Next.js API routes
+-   **Database**: MongoDB with Prisma ORM
+-   **Authentication**: NextAuth.js
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+-   Node.js 16.8+ and npm
+-   MongoDB database (local or cloud-based MongoDB Atlas)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+1. Clone the repository:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+    ```bash
+    git clone https://github.com/yourusername/snipstash.git
+    cd snipstash
+    ```
 
-## Learn More
+2. Install dependencies:
 
-To learn more about Next.js, take a look at the following resources:
+    ```bash
+    npm install
+    ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Set up your environment variables by creating a `.env` file:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+    ```
+    DATABASE_URL="your-mongodb-connection-string"
+    NEXTAUTH_URL="http://localhost:3000"
+    NEXTAUTH_SECRET="your-nextauth-secret-key"
+    ```
 
-## Deploy on Vercel
+4. Generate Prisma client:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+    ```bash
+    npx prisma generate
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+5. Run the development server:
+
+    ```bash
+    npm run dev
+    ```
+
+6. Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
+
+## Usage
+
+1. **Sign Up/Login**: Create an account or log in to access your dashboard
+2. **Create a Snippet**: Click "Add New Snippet" on your dashboard
+3. **View & Search**: Browse your snippets, filter by language or tag, and search by content
+4. **Copy Code**: Use the copy button to quickly grab the code you need
+
+## Smart Categorization
+
+SnipStash uses rule-based pattern matching to automatically identify code characteristics and add relevant tags:
+
+-   **Loops**: Detects `for`, `while`, `foreach`, `.map()`, etc.
+-   **API Calls**: Identifies `fetch`, `axios`, `http`, etc.
+-   **Error Handling**: Recognizes `try/catch`, `throw`, etc.
+-   **Array Operations**: Detects `.filter()`, `.reduce()`, etc.
+-   **Many more**: Database operations, authentication, UI code, etc.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+-   Built with Next.js
+-   Styled with TailwindCSS
+-   Database managed with Prisma
