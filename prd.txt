@@ -1,0 +1,520 @@
+# SnipStash - Product Requirements Document (PRD)
+
+## Project Overview
+
+**Product Name:** SnipStash  
+**Version:** 1.0  
+**Date:** September 2, 2025  
+**Document Type:** Product Requirements Document  
+
+### Executive Summary
+SnipStash is an AI-powered web application designed to help developers save, categorize, and organize code snippets efficiently. The platform leverages intelligent auto-categorization, language detection, and smart search capabilities to transform how developers manage their code libraries.
+
+### Vision Statement
+To become the go-to platform for developers to store, organize, and discover code snippets with the power of AI, making coding more efficient and knowledge sharing seamless.
+
+### Mission Statement
+Empowering developers with intelligent code organization tools that automatically understand, categorize, and enhance code snippets through advanced AI technology.
+
+---
+
+## Product Goals & Objectives
+
+### Primary Goals
+1. **Intelligent Code Organization** - Automatically categorize and tag code snippets using AI
+2. **Enhanced Developer Productivity** - Reduce time spent searching for and organizing code
+3. **Smart Discovery** - Enable natural language search and contextual snippet recommendations
+4. **Seamless User Experience** - Provide intuitive interface for snippet management
+5. **Secure Personal Library** - Offer user authentication and private snippet storage
+
+### Success Metrics
+- **User Engagement**: 80% of users create 5+ snippets within first week
+- **AI Accuracy**: 95% accuracy in auto-categorization and language detection
+- **Search Efficiency**: Users find desired snippets within 10 seconds
+- **User Retention**: 70% monthly active user retention rate
+- **Performance**: Page load times under 2 seconds
+
+---
+
+## Target Audience
+
+### Primary Users
+- **Individual Developers** (Solo practitioners, freelancers)
+- **Development Teams** (Small to medium teams)
+- **Students & Learners** (Coding bootcamp students, CS students)
+- **Technical Professionals** (DevOps engineers, QA engineers)
+
+### User Personas
+
+#### Persona 1: "Alex the Full-Stack Developer"
+- **Demographics**: 3-7 years experience, works at tech startup
+- **Pain Points**: Struggles to organize growing collection of code snippets
+- **Goals**: Quick access to frequently used patterns, better code reuse
+- **Technology**: Uses React, Node.js, Python, works across multiple projects
+
+#### Persona 2: "Sam the Learning Developer"
+- **Demographics**: 0-2 years experience, bootcamp graduate or self-taught
+- **Pain Points**: Difficulty remembering syntax and patterns
+- **Goals**: Build personal code reference library, learn best practices
+- **Technology**: Learning JavaScript, trying different frameworks
+
+#### Persona 3: "Jordan the Team Lead"
+- **Demographics**: 5+ years experience, manages development team
+- **Pain Points**: Team knowledge sharing, code standardization
+- **Goals**: Establish team coding patterns, share reusable components
+- **Technology**: Multiple languages, focuses on architecture and standards
+
+---
+
+## Feature Requirements
+
+### Core Features (MVP)
+
+#### 1. User Authentication System
+**Priority**: Critical  
+**Description**: Secure user registration, login, and session management
+
+**Functional Requirements**:
+- User registration with email/password
+- Secure login with bcrypt password hashing
+- Session management with NextAuth.js
+- Password validation and security requirements
+- User profile management
+
+**Technical Implementation**:
+- NextAuth.js integration
+- MongoDB user storage via Prisma
+- bcryptjs for password hashing
+- Session-based authentication
+
+#### 2. Snippet Management (CRUD Operations)
+**Priority**: Critical  
+**Description**: Complete lifecycle management of code snippets
+
+**Functional Requirements**:
+- Create new snippets with title, code, description
+- Read/view individual and all snippets
+- Update existing snippets
+- Delete snippets with confirmation
+- Snippet ownership validation
+
+**Technical Implementation**:
+- RESTful API endpoints (/api/snippets)
+- Prisma ORM with MongoDB
+- Server-side validation
+- User authorization checks
+
+#### 3. AI-Powered Auto-Categorization
+**Priority**: High  
+**Description**: Intelligent automatic tagging and categorization of code snippets
+
+**Functional Requirements**:
+- Automatic language detection (15+ languages)
+- Pattern-based tag generation (loops, API calls, error handling, etc.)
+- Manual tag override capability
+- Tag suggestion system
+- Category-based organization
+
+**Technical Implementation**:
+- Pattern matching algorithms in snippetUtils.js
+- Rule-based categorization system
+- Language detection via code analysis
+- Tag merging (auto + manual tags)
+
+#### 4. Advanced Search & Filtering
+**Priority**: High  
+**Description**: Multi-faceted search and filtering capabilities
+
+**Functional Requirements**:
+- Text search across title and code content
+- Language-based filtering
+- Tag-based filtering
+- Combined filter application
+- Real-time search results
+- Search result highlighting
+
+**Technical Implementation**:
+- Client-side filtering for performance
+- MongoDB text search capabilities
+- React state management for filters
+- Debounced search input
+
+#### 5. Code Editor Integration
+**Priority**: Medium  
+**Description**: Rich code editing and viewing experience
+
+**Functional Requirements**:
+- Syntax highlighting for multiple languages
+- Code formatting and indentation
+- Line numbers and code folding
+- Copy-to-clipboard functionality
+- Monaco Editor integration
+
+**Technical Implementation**:
+- @monaco-editor/react integration
+- react-syntax-highlighter for display
+- Language-specific syntax highlighting
+- Clipboard API integration
+
+#### 6. Responsive Dashboard
+**Priority**: High  
+**Description**: Modern, responsive interface for snippet management
+
+**Functional Requirements**:
+- Grid/card-based snippet display
+- Mobile-responsive design
+- Dark/light mode support
+- Snippet preview with truncation
+- Quick action buttons (view, edit, copy, delete)
+- Empty state handling
+
+**Technical Implementation**:
+- Next.js 13+ with app router
+- TailwindCSS for styling
+- Responsive grid layouts
+- CSS-in-JS with Tailwind classes
+
+### Advanced Features (Future Releases)
+
+#### 7. AI-Enhanced Features (v1.1)
+**Priority**: Medium  
+**Description**: Advanced AI capabilities using Gemini API
+
+**Planned Features**:
+- AI-generated snippet descriptions
+- Code explanation and documentation
+- Smart snippet suggestions
+- Code optimization recommendations
+- Natural language code search
+
+**Technical Requirements**:
+- Google Gemini API integration
+- @google/generative-ai package
+- AI prompt engineering
+- Response caching and rate limiting
+
+#### 8. Team Collaboration (v1.2)
+**Priority**: Medium  
+**Description**: Multi-user collaboration features
+
+**Planned Features**:
+- Team workspaces
+- Snippet sharing and permissions
+- Comment system on snippets
+- Team snippet libraries
+- Role-based access control
+
+#### 9. Import/Export Capabilities (v1.3)
+**Priority**: Low  
+**Description**: Data portability and integration features
+
+**Planned Features**:
+- Export snippets (JSON, Markdown)
+- Import from GitHub Gists
+- Bulk import/export
+- API integrations with popular IDEs
+- Version control integration
+
+---
+
+## Technical Architecture
+
+### Technology Stack
+
+#### Frontend
+- **Framework**: Next.js 15.3.1 (React 19.0.0)
+- **Styling**: TailwindCSS 4.0
+- **UI Components**: Custom components with Tailwind
+- **Code Editor**: Monaco Editor (@monaco-editor/react 4.7.0)
+- **Syntax Highlighting**: react-syntax-highlighter 15.6.1
+- **Authentication**: NextAuth.js 4.24.11
+
+#### Backend
+- **Runtime**: Node.js with Next.js API routes
+- **Database**: MongoDB with Prisma ORM 6.6.0
+- **Authentication**: NextAuth.js with bcryptjs 3.0.2
+- **File Structure**: App Router (Next.js 13+)
+
+#### Database Schema
+```prisma
+model User {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  snippets  Snippet[]
+}
+
+model Snippet {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  code        String
+  language    String
+  description String?
+  tags        String[]
+  userId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+#### Deployment
+- **Platform**: Vercel (recommended for Next.js)
+- **Database**: MongoDB Atlas
+- **Environment**: Node.js 16.8+
+- **Build**: Automatic deployment via Git integration
+
+### Security Requirements
+- Password hashing with bcryptjs
+- Session-based authentication
+- Server-side authorization checks
+- Input validation and sanitization
+- Environment variable protection
+- HTTPS enforcement in production
+- CORS policy implementation
+
+### Performance Requirements
+- Page load time: < 2 seconds
+- Search response time: < 500ms
+- Database query optimization
+- Client-side caching for snippets
+- Image and asset optimization
+- Code splitting and lazy loading
+
+---
+
+## User Experience (UX) Requirements
+
+### Design Principles
+- **Simplicity**: Clean, uncluttered interface
+- **Efficiency**: Minimal clicks to accomplish tasks
+- **Discoverability**: Intuitive navigation and feature discovery
+- **Accessibility**: WCAG 2.1 AA compliance
+- **Responsiveness**: Mobile-first design approach
+
+### User Flows
+
+#### Primary User Flow: Creating a Snippet
+1. User logs in to dashboard
+2. Clicks "Add New Snippet" button
+3. Enters title and pastes code
+4. AI automatically detects language and generates tags
+5. User optionally adds description and manual tags
+6. Saves snippet
+7. Returns to dashboard with new snippet visible
+
+#### Secondary User Flow: Finding a Snippet
+1. User accesses dashboard
+2. Uses search bar or filters (language/tag)
+3. Views filtered results in grid layout
+4. Clicks on desired snippet to view full content
+5. Copies code to clipboard or edits as needed
+
+### Interface Requirements
+- **Navigation**: Fixed header with user menu
+- **Dashboard**: Grid layout with snippet cards
+- **Forms**: Inline validation with helpful error messages
+- **Responsive**: Mobile breakpoints at 768px and 1024px
+- **Loading States**: Skeleton loaders and spinners
+- **Empty States**: Helpful guidance for new users
+
+---
+
+## API Specifications
+
+### Authentication Endpoints
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login via NextAuth
+- `GET /api/auth/session` - Get current session
+- `POST /api/auth/logout` - User logout
+
+### Snippet Management Endpoints
+- `GET /api/snippets` - Get all user snippets
+- `GET /api/snippets?id={id}` - Get specific snippet
+- `POST /api/snippets` - Create new snippet
+- `PATCH /api/snippets` - Update existing snippet
+- `DELETE /api/snippets?id={id}` - Delete snippet
+
+### Request/Response Examples
+
+#### Create Snippet Request
+```json
+POST /api/snippets
+{
+  "title": "Fetch API Helper",
+  "code": "const fetchData = async (url) => { ... }",
+  "language": "javascript",
+  "description": "Reusable fetch wrapper with error handling",
+  "tags": ["utility", "api"]
+}
+```
+
+#### Create Snippet Response
+```json
+{
+  "snippet": {
+    "id": "64f8a9b2c1d2e3f4a5b6c7d8",
+    "title": "Fetch API Helper",
+    "code": "const fetchData = async (url) => { ... }",
+    "language": "javascript",
+    "description": "Reusable fetch wrapper with error handling",
+    "tags": ["utility", "api", "javascript", "error handling", "fetch"],
+    "userId": "64f8a9b2c1d2e3f4a5b6c7d9",
+    "createdAt": "2025-09-02T10:30:00.000Z",
+    "updatedAt": "2025-09-02T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## Quality Assurance
+
+### Testing Strategy
+- **Unit Tests**: Core utility functions (autoCategorizeTags, detectLanguage)
+- **Integration Tests**: API endpoint testing
+- **E2E Tests**: Critical user flow testing
+- **Performance Tests**: Load testing for search and filtering
+- **Security Tests**: Authentication and authorization validation
+
+### Browser Support
+- **Modern Browsers**: Chrome 90+, Firefox 90+, Safari 14+, Edge 90+
+- **Mobile Browsers**: iOS Safari 14+, Chrome Mobile 90+
+- **Progressive Enhancement**: Graceful degradation for older browsers
+
+### Accessibility Requirements
+- **Keyboard Navigation**: Full keyboard accessibility
+- **Screen Readers**: ARIA labels and semantic HTML
+- **Color Contrast**: WCAG AA compliance (4.5:1 ratio)
+- **Focus Management**: Visible focus indicators
+- **Alt Text**: Descriptive text for images and icons
+
+---
+
+## Deployment & DevOps
+
+### Environment Configuration
+```env
+DATABASE_URL="mongodb+srv://..."
+NEXTAUTH_URL="https://snipstash.com"
+NEXTAUTH_SECRET="production-secret-key"
+GEMINI_API_KEY="ai-api-key" # Future feature
+```
+
+### Build Process
+1. Install dependencies: `npm install`
+2. Generate Prisma client: `npx prisma generate`
+3. Build application: `npm run build`
+4. Deploy to Vercel with automatic Git integration
+
+### Monitoring & Analytics
+- **Error Tracking**: Implement error logging service
+- **Performance Monitoring**: Core Web Vitals tracking
+- **User Analytics**: Usage patterns and feature adoption
+- **Uptime Monitoring**: Service availability tracking
+
+---
+
+## Risk Assessment
+
+### Technical Risks
+- **Database Performance**: MongoDB query optimization for large snippet collections
+- **AI API Limits**: Rate limiting and fallback for Gemini API
+- **Security Vulnerabilities**: Regular security audits and dependency updates
+- **Scalability**: Horizontal scaling considerations for user growth
+
+### Business Risks
+- **User Adoption**: Marketing and user onboarding strategies
+- **Competition**: Differentiation from existing snippet managers
+- **Monetization**: Freemium model development for sustainability
+- **Data Privacy**: GDPR and privacy regulation compliance
+
+### Mitigation Strategies
+- Regular security updates and vulnerability scanning
+- Performance optimization and caching strategies
+- User feedback collection and iterative improvements
+- Backup and disaster recovery procedures
+
+---
+
+## Success Metrics & KPIs
+
+### User Metrics
+- **Monthly Active Users (MAU)**: Target 1,000+ in first 6 months
+- **User Retention Rate**: 70% monthly retention
+- **Snippet Creation Rate**: Average 5+ snippets per user per month
+- **Search Success Rate**: 90% of searches result in snippet interaction
+
+### Technical Metrics
+- **Page Load Time**: < 2 seconds (95th percentile)
+- **API Response Time**: < 500ms average
+- **Uptime**: 99.9% availability
+- **Error Rate**: < 1% of requests
+
+### AI Feature Metrics
+- **Auto-categorization Accuracy**: 95% correct language detection
+- **Tag Relevance**: 85% user acceptance of auto-generated tags
+- **Search Improvement**: 40% better search results with AI features
+
+---
+
+## Timeline & Milestones
+
+### Phase 1: MVP (Completed)
+- ✅ User authentication system
+- ✅ Basic snippet CRUD operations
+- ✅ Auto-categorization and language detection
+- ✅ Search and filtering capabilities
+- ✅ Responsive dashboard interface
+
+### Phase 2: AI Enhancement (Next 2-3 months)
+- 🔄 Gemini API integration
+- 🔄 AI-generated descriptions and explanations
+- 🔄 Natural language search capabilities
+- 🔄 Smart snippet suggestions
+- 🔄 Code optimization recommendations
+
+### Phase 3: Collaboration Features (3-6 months)
+- ⏳ Team workspaces
+- ⏳ Snippet sharing and permissions
+- ⏳ Comment system
+- ⏳ Export/import capabilities
+- ⏳ API integrations
+
+### Phase 4: Enterprise Features (6+ months)
+- ⏳ Advanced analytics dashboard
+- ⏳ Enterprise security features
+- ⏳ Custom branding options
+- ⏳ SSO integration
+- ⏳ Advanced team management
+
+---
+
+## Appendix
+
+### Glossary
+- **Snippet**: A reusable piece of code with metadata
+- **Auto-categorization**: AI-powered automatic tagging of code
+- **Language Detection**: Automatic identification of programming language
+- **Tag**: Label used for categorizing and filtering snippets
+- **Monaco Editor**: Microsoft's code editor (used in VS Code)
+
+### References
+- Next.js Documentation: https://nextjs.org/docs
+- Prisma Documentation: https://www.prisma.io/docs
+- TailwindCSS Documentation: https://tailwindcss.com/docs
+- MongoDB Documentation: https://docs.mongodb.com
+- Google Gemini API: https://developers.generativeai.google
+
+### Change Log
+- v1.0 (September 2, 2025): Initial PRD creation
+- Future versions will track feature additions and requirement changes
+
+---
+
+**Document Prepared By**: Development Team  
+**Last Updated**: September 2, 2025  
+**Next Review Date**: October 1, 2025

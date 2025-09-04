@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { detectLanguage } from "@/utils/snippetUtils";
 import Editor from "@monaco-editor/react";
+import { detectLanguage, autoCategorizeTags } from "@/utils/snippetUtils";
 
 const languageOptions = [
     { value: "", label: "Auto Detect" },
@@ -44,250 +43,472 @@ export default function NewSnippetPage() {
     const [error, setError] = useState("");
     const [detectedLanguage, setDetectedLanguage] = useState("");
 
+    // NEW AI-RELATED STATE
+    const [aiSuggestions, setAiSuggestions] = useState(null);
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [aiTags, setAiTags] = useState([]);
+    const [showAIPanel, setShowAIPanel] = useState(false);
+
     // Detect language as user types code
     useEffect(() => {
-        if (formData.code) {
+        if (formData.code && formData.language === "") {
             const detected = detectLanguage(formData.code);
             setDetectedLanguage(detected);
-        } else {
-            setDetectedLanguage("");
         }
     }, [formData.code]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prevState => ({
-            ...prevState,
+        setFormData(prev => ({
+            ...prev,
             [name]: value
         }));
     };
 
     // Handle Monaco Editor code changes
     const handleEditorChange = (value) => {
-        setFormData(prevState => ({
-            ...prevState,
-            code: value
+        setFormData(prev => ({
+            ...prev,
+            code: value || ""
         }));
+    };
+
+    // NEW AI FUNCTIONS
+    const generateAITags = async () => {
+        if (!formData.code.trim()) {
+            alert("Please enter some code first");
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            const response = await fetch('/api/ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'tags',
+                    code: formData.code,
+                    language: formData.language || detectedLanguage
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setAiTags(data.result);
+                setShowAIPanel(true);
+            } else {
+                console.error('AI tag generation failed:', data.error);
+            }
+        } catch (error) {
+            console.error('Error generating AI tags:', error);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const analyzeCodeWithAI = async () => {
+        if (!formData.code.trim()) {
+            alert("Please enter some code first");
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            const response = await fetch('/api/ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'analyze',
+                    code: formData.code,
+                    language: formData.language || detectedLanguage
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setAiSuggestions(data.result);
+                setShowAIPanel(true);
+            } else {
+                console.error('AI analysis failed:', data.error);
+            }
+        } catch (error) {
+            console.error('Error analyzing code:', error);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const addAITag = (tag) => {
+        if (!formData.tags.includes(tag)) {
+            setFormData(prev => ({
+                ...prev,
+                tags: [...prev.tags, tag]
+            }));
+        }
     };
 
     const addTag = () => {
         if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
-            setFormData(prevState => ({
-                ...prevState,
-                tags: [...prevState.tags, newTag.trim()]
+            setFormData(prev => ({
+                ...prev,
+                tags: [...prev.tags, newTag.trim()]
             }));
             setNewTag("");
         }
     };
 
     const removeTag = (tagToRemove) => {
-        setFormData(prevState => ({
-            ...prevState,
-            tags: prevState.tags.filter(tag => tag !== tagToRemove)
+        setFormData(prev => ({
+            ...prev,
+            tags: prev.tags.filter(tag => tag !== tagToRemove)
         }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
 
-        if (!formData.title || !formData.code) {
+        if (!session) {
+            setError("You must be logged in to create snippets");
+            return;
+        }
+
+        if (!formData.title.trim() || !formData.code.trim()) {
             setError("Title and code are required");
             return;
         }
 
         setIsSubmitting(true);
+        setError("");
 
         try {
-            // Use the detected language if none is selected
-            const snippetData = {
-                ...formData,
-                language: formData.language || detectedLanguage
-            };
+            const finalLanguage = formData.language || detectedLanguage || "text";
+            const finalTags = formData.tags.length > 0 ? formData.tags : autoCategorizeTags(formData.code, finalLanguage);
+
+            // Generate AI data before saving
+            let aiAnalysis = null;
+            let aiExplanation = null;
+
+            if (formData.code.trim()) {
+                // Get AI analysis
+                try {
+                    const analysisResponse = await fetch('/api/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'analyze',
+                            code: formData.code,
+                            language: finalLanguage
+                        })
+                    });
+                    const analysisData = await analysisResponse.json();
+                    if (analysisData.success) {
+                        aiAnalysis = analysisData.result;
+                    }
+                } catch (err) {
+                    console.log('AI analysis failed, continuing without it');
+                }
+
+                // Get AI explanation
+                try {
+                    const explanationResponse = await fetch('/api/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'explain',
+                            code: formData.code,
+                            language: finalLanguage
+                        })
+                    });
+                    const explanationData = await explanationResponse.json();
+                    if (explanationData.success) {
+                        aiExplanation = explanationData.result;
+                    }
+                } catch (err) {
+                    console.log('AI explanation failed, continuing without it');
+                }
+            }
 
             const response = await fetch("/api/snippets", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
-                body: JSON.stringify(snippetData)
+                body: JSON.stringify({
+                    title: formData.title,
+                    code: formData.code,
+                    language: finalLanguage,
+                    description: formData.description,
+                    tags: finalTags,
+                    aiAnalysis,
+                    aiTags: aiTags,
+                    aiExplanation,
+                    qualityScore: aiAnalysis?.qualityScore || null
+                }),
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || "Failed to create snippet");
+            if (response.ok) {
+                router.push("/dashboard");
+            } else {
+                const errorData = await response.json();
+                setError(errorData.message || "Failed to create snippet");
             }
-
-            // Redirect to dashboard on success
-            router.push("/dashboard");
-            router.refresh();
-
-        } catch (err) {
-            setError(err.message || "An error occurred while saving the snippet");
-            console.error("Error creating snippet:", err);
+        } catch (error) {
+            console.error("Error creating snippet:", error);
+            setError("An error occurred while creating the snippet");
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-            <div className="mb-8 flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Snippet</h1>
-                <Link
-                    href="/dashboard"
-                    className="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                    ← Back to Dashboard
-                </Link>
-            </div>
-
-            {error && (
-                <div className="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-400 text-red-800 dark:text-red-300 rounded-md p-4">
-                    <p>{error}</p>
-                </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                <div>
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Snippet Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        id="title"
-                        name="title"
-                        value={formData.title}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white"
-                        placeholder="A descriptive title for your snippet"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label htmlFor="code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Code <span className="text-red-500">*</span>
-                    </label>
-                    <div className="border border-gray-300 dark:border-gray-600 rounded-md shadow-sm overflow-hidden">
-                        <Editor
-                            height="400px"
-                            language={formData.language || detectedLanguage || "plaintext"}
-                            value={formData.code}
-                            onChange={handleEditorChange}
-                            theme={typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vs-dark' : 'light'}
-                            options={{
-                                minimap: { enabled: false },
-                                fontSize: 14,
-                                scrollBeyondLastLine: false,
-                                automaticLayout: true,
-                                tabSize: 2,
-                                wordWrap: "on"
-                            }}
-                        />
-                    </div>
-                    {detectedLanguage && (
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            Detected language: <span className="font-semibold">{detectedLanguage}</span>
-                        </p>
-                    )}
-                </div>
-
-                <div>
-                    <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Language
-                    </label>
-                    <select
-                        id="language"
-                        name="language"
-                        value={formData.language}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white"
-                    >
-                        {languageOptions.map(option => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Description (optional)
-                    </label>
-                    <textarea
-                        id="description"
-                        name="description"
-                        rows="3"
-                        value={formData.description}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white"
-                        placeholder="Add a description of what this code does"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Tags (optional)
-                    </label>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                        {formData.tags.map(tag => (
-                            <span
-                                key={tag}
-                                className="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                            >
-                                {tag}
-                                <button
-                                    type="button"
-                                    onClick={() => removeTag(tag)}
-                                    className="ml-1.5 inline-flex text-blue-400 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-100"
-                                >
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                    <span className="sr-only">Remove tag</span>
-                                </button>
-                            </span>
-                        ))}
-                    </div>
-                    <div className="flex">
-                        <input
-                            type="text"
-                            value={newTag}
-                            onChange={(e) => setNewTag(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white"
-                            placeholder="Add a tag"
-                        />
+        <div className="max-w-4xl mx-auto p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                        Create New Snippet
+                    </h1>
+                    <div className="flex gap-2">
                         <button
                             type="button"
-                            onClick={addTag}
-                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-r-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            onClick={generateAITags}
+                            disabled={isGeneratingAI || !formData.code.trim()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
-                            Add
+                            {isGeneratingAI ? (
+                                <>🔄 Generating...</>
+                            ) : (
+                                <>🤖 AI Tags</>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={analyzeCodeWithAI}
+                            disabled={isGeneratingAI || !formData.code.trim()}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isGeneratingAI ? (
+                                <>🔄 Analyzing...</>
+                            ) : (
+                                <>🔍 AI Analysis</>
+                            )}
                         </button>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Tags help organize your snippets. Additional tags will be generated automatically.
-                    </p>
                 </div>
 
-                <div className="flex justify-end space-x-3 pt-4">
-                    <Link
-                        href="/dashboard"
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                        Cancel
-                    </Link>
-                    <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                    >
-                        {isSubmitting ? "Saving..." : "Save Snippet"}
-                    </button>
-                </div>
-            </form>
+                {error && (
+                    <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                        <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Title *
+                        </label>
+                        <input
+                            type="text"
+                            id="title"
+                            name="title"
+                            value={formData.title}
+                            onChange={handleChange}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            placeholder="Enter snippet title"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Language
+                        </label>
+                        <select
+                            id="language"
+                            name="language"
+                            value={formData.language}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        >
+                            {languageOptions.map(option => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        {detectedLanguage && !formData.language && (
+                            <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                                Detected: {detectedLanguage}
+                            </p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Code *
+                        </label>
+                        <div className="border border-gray-300 rounded-md overflow-hidden">
+                            <Editor
+                                height="400px"
+                                language={formData.language || detectedLanguage || "javascript"}
+                                value={formData.code}
+                                onChange={handleEditorChange}
+                                theme="vs-dark"
+                                options={{
+                                    minimap: { enabled: false },
+                                    fontSize: 14,
+                                    lineNumbers: "on",
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* AI Suggestions Panel */}
+                    {showAIPanel && (aiSuggestions || aiTags.length > 0) && (
+                        <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-4 border">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                    🤖 AI Suggestions
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAIPanel(false)}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {aiTags.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                        Suggested Tags:
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {aiTags.map((tag, index) => (
+                                            <button
+                                                key={index}
+                                                type="button"
+                                                onClick={() => addAITag(tag)}
+                                                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition-colors"
+                                            >
+                                                + {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {aiSuggestions && (
+                                <div>
+                                    <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                        Code Quality: {aiSuggestions.qualityScore}/10
+                                    </h4>
+
+                                    {aiSuggestions.improvements?.length > 0 && (
+                                        <div className="mb-3">
+                                            <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Improvements:
+                                            </h5>
+                                            <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400">
+                                                {aiSuggestions.improvements.map((item, index) => (
+                                                    <li key={index}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {aiSuggestions.security?.length > 0 && (
+                                        <div className="mb-3">
+                                            <h5 className="font-medium text-red-700 dark:text-red-400 mb-1">
+                                                Security Issues:
+                                            </h5>
+                                            <ul className="list-disc list-inside text-sm text-red-600 dark:text-red-400">
+                                                {aiSuggestions.security.map((item, index) => (
+                                                    <li key={index}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Description
+                        </label>
+                        <textarea
+                            id="description"
+                            name="description"
+                            value={formData.description}
+                            onChange={handleChange}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            placeholder="Enter snippet description"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Tags
+                        </label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                value={newTag}
+                                onChange={(e) => setNewTag(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                placeholder="Add a tag"
+                            />
+                            <button
+                                type="button"
+                                onClick={addTag}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                            >
+                                Add
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {formData.tags.map((tag, index) => (
+                                <span
+                                    key={index}
+                                    className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                >
+                                    {tag}
+                                    <button
+                                        type="button"
+                                        onClick={() => removeTag(tag)}
+                                        className="ml-1 text-blue-600 hover:text-blue-800"
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSubmitting ? "Creating..." : "Create Snippet"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => router.push("/dashboard")}
+                            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 }

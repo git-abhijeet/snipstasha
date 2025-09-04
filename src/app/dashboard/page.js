@@ -3,260 +3,478 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { FiSearch, FiFilter, FiEye, FiEdit, FiTrash2, FiCopy, FiCode } from "react-icons/fi";
 
-export default function Dashboard() {
+export default function DashboardPage() {
     const { data: session } = useSession();
     const [snippets, setSnippets] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [filterLanguage, setFilterLanguage] = useState("");
-    const [filterTag, setFilterTag] = useState("");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [languages, setLanguages] = useState([]);
-    const [tags, setTags] = useState([]);
+    const [filteredSnippets, setFilteredSnippets] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
+    const [selectedLanguage, setSelectedLanguage] = useState("");
+    const [selectedTags, setSelectedTags] = useState([]);
+    const [availableTags, setAvailableTags] = useState([]);
+    const [availableLanguages, setAvailableLanguages] = useState([]);
+    const [copiedId, setCopiedId] = useState(null);
+
+    // NEW AI-RELATED STATE
+    const [sortBy, setSortBy] = useState("createdAt"); // createdAt, qualityScore, title
+    const [showAIInsights, setShowAIInsights] = useState(true);
 
     useEffect(() => {
-        // Fetch snippets when component mounts
-        const fetchSnippets = async () => {
-            try {
-                setIsLoading(true);
-                const response = await fetch("/api/snippets");
+        if (session) {
+            fetchSnippets();
+        }
+    }, [session]);
 
-                if (!response.ok) {
-                    throw new Error("Failed to fetch snippets");
-                }
+    useEffect(() => {
+        filterSnippets();
+    }, [snippets, searchTerm, selectedLanguage, selectedTags, sortBy]);
 
+    const fetchSnippets = async () => {
+        try {
+            const response = await fetch("/api/snippets");
+            if (response.ok) {
                 const data = await response.json();
-                setSnippets(data.snippets);
+                setSnippets(data);
 
                 // Extract unique languages and tags
-                const uniqueLanguages = [...new Set(data.snippets.map(snippet => snippet.language))];
-                setLanguages(uniqueLanguages);
+                const languages = [...new Set(data.map(snippet => snippet.language))];
+                const tags = [...new Set(data.flatMap(snippet => [...(snippet.tags || []), ...(snippet.aiTags || [])]))];
 
-                const allTags = data.snippets.flatMap(snippet => snippet.tags);
-                const uniqueTags = [...new Set(allTags)];
-                setTags(uniqueTags);
-
-            } catch (err) {
-                setError(err.message);
-                console.error("Error fetching snippets:", err);
-            } finally {
-                setIsLoading(false);
+                setAvailableLanguages(languages);
+                setAvailableTags(tags);
+            } else {
+                setError("Failed to fetch snippets");
             }
-        };
-
-        fetchSnippets();
-    }, []);
-
-    // Filter snippets based on search criteria
-    const filteredSnippets = snippets.filter(snippet => {
-        const matchesLanguage = filterLanguage ? snippet.language === filterLanguage : true;
-        const matchesTag = filterTag ? snippet.tags.includes(filterTag) : true;
-        const matchesSearch = searchQuery
-            ? snippet.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            snippet.code.toLowerCase().includes(searchQuery.toLowerCase())
-            : true;
-
-        return matchesLanguage && matchesTag && matchesSearch;
-    });
-
-    // Copy snippet to clipboard
-    const copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text)
-            .then(() => {
-                alert("Snippet copied to clipboard!");
-            })
-            .catch(err => {
-                console.error("Failed to copy text: ", err);
-            });
+        } catch (error) {
+            console.error("Error fetching snippets:", error);
+            setError("An error occurred while fetching snippets");
+        } finally {
+            setLoading(false);
+        }
     };
 
+    const filterSnippets = () => {
+        let filtered = [...snippets];
+
+        // Filter by search term
+        if (searchTerm) {
+            filtered = filtered.filter(snippet =>
+                snippet.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                snippet.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                snippet.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                snippet.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                snippet.aiTags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+        }
+
+        // Filter by language
+        if (selectedLanguage) {
+            filtered = filtered.filter(snippet => snippet.language === selectedLanguage);
+        }
+
+        // Filter by tags
+        if (selectedTags.length > 0) {
+            filtered = filtered.filter(snippet =>
+                selectedTags.every(tag =>
+                    snippet.tags?.includes(tag) || snippet.aiTags?.includes(tag)
+                )
+            );
+        }
+
+        // Sort snippets
+        filtered.sort((a, b) => {
+            switch (sortBy) {
+                case "qualityScore":
+                    const scoreA = a.qualityScore || 0;
+                    const scoreB = b.qualityScore || 0;
+                    return scoreB - scoreA; // Highest first
+                case "title":
+                    return a.title.localeCompare(b.title);
+                case "createdAt":
+                default:
+                    return new Date(b.createdAt) - new Date(a.createdAt);
+            }
+        });
+
+        setFilteredSnippets(filtered);
+    };
+
+    const copyToClipboard = async (code, id) => {
+        try {
+            await navigator.clipboard.writeText(code);
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 2000);
+        } catch (error) {
+            console.error("Failed to copy:", error);
+        }
+    };
+
+    const deleteSnippet = async (id) => {
+        if (confirm("Are you sure you want to delete this snippet?")) {
+            try {
+                const response = await fetch(`/api/snippets?id=${id}`, {
+                    method: "DELETE"
+                });
+
+                if (response.ok) {
+                    setSnippets(snippets.filter(snippet => snippet.id !== id));
+                } else {
+                    setError("Failed to delete snippet");
+                }
+            } catch (error) {
+                console.error("Error deleting snippet:", error);
+                setError("An error occurred while deleting the snippet");
+            }
+        }
+    };
+
+    const addTagFilter = (tag) => {
+        if (!selectedTags.includes(tag)) {
+            setSelectedTags([...selectedTags, tag]);
+        }
+    };
+
+    const removeTagFilter = (tag) => {
+        setSelectedTags(selectedTags.filter(t => t !== tag));
+    };
+
+    // NEW AI FUNCTIONS
+    const getQualityScoreColor = (score) => {
+        if (!score) return "bg-gray-100 text-gray-800";
+        if (score >= 8) return "bg-green-100 text-green-800";
+        if (score >= 6) return "bg-yellow-100 text-yellow-800";
+        return "bg-red-100 text-red-800";
+    };
+
+    const getAIInsightsSummary = () => {
+        const totalSnippets = snippets.length;
+        const snippetsWithAI = snippets.filter(s => s.qualityScore || s.aiAnalysis).length;
+        const avgQuality = snippets
+            .filter(s => s.qualityScore)
+            .reduce((sum, s) => sum + s.qualityScore, 0) / snippets.filter(s => s.qualityScore).length || 0;
+
+        const languageQuality = availableLanguages.map(lang => {
+            const langSnippets = snippets.filter(s => s.language === lang && s.qualityScore);
+            const avgScore = langSnippets.reduce((sum, s) => sum + s.qualityScore, 0) / langSnippets.length || 0;
+            return { language: lang, avgScore: avgScore.toFixed(1), count: langSnippets.length };
+        }).filter(item => item.count > 0).sort((a, b) => b.avgScore - a.avgScore);
+
+        return { totalSnippets, snippetsWithAI, avgQuality: avgQuality.toFixed(1), languageQuality };
+    };
+
+    if (loading) {
+        return (
+            <div className="max-w-7xl mx-auto p-6">
+                <div className="animate-pulse space-y-4">
+                    <div className="h-8 bg-gray-300 rounded w-1/4"></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[...Array(6)].map((_, i) => (
+                            <div key={i} className="h-48 bg-gray-300 rounded-lg"></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const aiInsights = getAIInsightsSummary();
+
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div className="max-w-7xl mx-auto p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">My Snippets</h1>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        Manage and organize your code snippets
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                        My Snippets
+                    </h1>
+                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                        {filteredSnippets.length} of {snippets.length} snippets
+                        {aiInsights.snippetsWithAI > 0 && (
+                            <span className="ml-2 text-purple-600">
+                                • {aiInsights.snippetsWithAI} with AI analysis
+                            </span>
+                        )}
                     </p>
                 </div>
-                <Link
-                    href="/dashboard/new"
-                    className="mt-4 md:mt-0 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg cursor-pointer flex items-center"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                    </svg>
-                    Add New Snippet
-                </Link>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setShowAIInsights(!showAIInsights)}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                    >
+                        🤖 {showAIInsights ? 'Hide' : 'Show'} AI Insights
+                    </button>
+                    <Link
+                        href="/dashboard/new"
+                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                    >
+                        <FiCode className="w-4 h-4" />
+                        New Snippet
+                    </Link>
+                </div>
             </div>
 
-            {/* Search and filters */}
-            <div className="mb-8 grid gap-4 md:flex md:items-center md:space-x-4">
-                <div className="flex-1 relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                    </span>
-                    <input
-                        id="search"
-                        type="text"
-                        placeholder="Search snippets..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white transition-shadow duration-200"
-                    />
+            {error && (
+                <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                    {error}
                 </div>
-                <div className="w-full md:w-40 relative">
+            )}
+
+            {/* AI Insights Panel */}
+            {showAIInsights && aiInsights.snippetsWithAI > 0 && (
+                <div className="mb-8 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border">
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        🤖 AI Code Insights
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                            <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Overall Quality</h3>
+                            <div className="text-2xl font-bold text-purple-600">
+                                {aiInsights.avgQuality}/10
+                            </div>
+                            <p className="text-sm text-gray-500">Average across {aiInsights.snippetsWithAI} snippets</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                            <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Coverage</h3>
+                            <div className="text-2xl font-bold text-blue-600">
+                                {Math.round((aiInsights.snippetsWithAI / aiInsights.totalSnippets) * 100)}%
+                            </div>
+                            <p className="text-sm text-gray-500">Snippets with AI analysis</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                            <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Top Language</h3>
+                            {aiInsights.languageQuality.length > 0 && (
+                                <>
+                                    <div className="text-lg font-bold text-green-600">
+                                        {aiInsights.languageQuality[0].language}
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                        {aiInsights.languageQuality[0].avgScore}/10 avg quality
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Search and Filters */}
+            <div className="mb-8 space-y-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1 relative">
+                        <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search snippets..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        />
+                    </div>
+
                     <select
-                        id="language-filter"
-                        value={filterLanguage}
-                        onChange={(e) => setFilterLanguage(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white appearance-none cursor-pointer pr-8"
+                        value={selectedLanguage}
+                        onChange={(e) => setSelectedLanguage(e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     >
                         <option value="">All Languages</option>
-                        {languages.map(lang => (
-                            <option key={lang} value={lang}>{lang}</option>
+                        {availableLanguages.map(language => (
+                            <option key={language} value={language}>
+                                {language}
+                            </option>
                         ))}
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                        </svg>
-                    </div>
-                </div>
-                <div className="w-full md:w-40 relative">
+
                     <select
-                        id="tag-filter"
-                        value={filterTag}
-                        onChange={(e) => setFilterTag(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white appearance-none cursor-pointer pr-8"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     >
-                        <option value="">All Tags</option>
-                        {tags.map(tag => (
-                            <option key={tag} value={tag}>{tag}</option>
-                        ))}
+                        <option value="createdAt">Sort by Date</option>
+                        <option value="title">Sort by Title</option>
+                        <option value="qualityScore">Sort by AI Quality</option>
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                        </svg>
-                    </div>
                 </div>
+
+                {/* Active Filters */}
+                {selectedTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Filters:</span>
+                        {selectedTags.map(tag => (
+                            <span
+                                key={tag}
+                                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                            >
+                                {tag}
+                                <button
+                                    onClick={() => removeTagFilter(tag)}
+                                    className="ml-1 text-blue-600 hover:text-blue-800"
+                                >
+                                    ×
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            {isLoading ? (
-                <div className="flex justify-center items-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                </div>
-            ) : error ? (
-                <div className="bg-red-50 dark:bg-red-900/30 border border-red-400 text-red-800 dark:text-red-300 rounded-md p-4">
-                    <p>{error}</p>
-                </div>
-            ) : filteredSnippets.length === 0 ? (
-                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mx-auto h-12 w-12 text-gray-400">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-200">No snippets found</h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {filterLanguage || filterTag || searchQuery
-                            ? "Try adjusting your filters or search query"
-                            : "Get started by creating a new snippet"}
+            {/* Snippets Grid */}
+            {filteredSnippets.length === 0 ? (
+                <div className="text-center py-12">
+                    <FiCode className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">
+                        {snippets.length === 0 ? "No snippets yet" : "No snippets match your filters"}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                        {snippets.length === 0
+                            ? "Create your first code snippet to get started"
+                            : "Try adjusting your search terms or filters"
+                        }
                     </p>
-                    {!filterLanguage && !filterTag && !searchQuery && (
-                        <div className="mt-6">
-                            <Link
-                                href="/dashboard/new"
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors duration-200 cursor-pointer"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                                Create New Snippet
-                            </Link>
-                        </div>
+                    {snippets.length === 0 && (
+                        <Link
+                            href="/dashboard/new"
+                            className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                            <FiCode className="w-4 h-4 mr-2" />
+                            Create Your First Snippet
+                        </Link>
                     )}
                 </div>
             ) : (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredSnippets.map((snippet) => (
                         <div
                             key={snippet.id}
-                            className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-200 border border-gray-200 dark:border-gray-700 flex flex-col"
+                            className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
                         >
-                            <div className="p-4 flex-1">
-                                <div className="flex justify-between items-start">
-                                    <h3 className="text-lg font-medium text-gray-900 dark:text-white truncate">
-                                        {snippet.title}
-                                    </h3>
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                                        {snippet.language}
-                                    </span>
-                                </div>
-                                <div className="mt-2 bg-gray-50 dark:bg-gray-900 rounded p-3 overflow-hidden border border-gray-100 dark:border-gray-800 group">
-                                    <pre className="text-sm text-gray-800 dark:text-gray-200 font-mono">
-                                        <code>
-                                            {snippet.code.length > 150
-                                                ? `${snippet.code.substring(0, 150)}...`
-                                                : snippet.code}
-                                        </code>
-                                    </pre>
-                                </div>
-                                <div className="mt-4">
-                                    <div className="flex flex-wrap gap-1">
-                                        {snippet.tags.map(tag => (
-                                            <span
-                                                key={tag}
-                                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
-                                            >
-                                                {tag}
+                            {/* Card Header */}
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                                            {snippet.title}
+                                        </h3>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                                                {snippet.language}
                                             </span>
-                                        ))}
+                                            {snippet.qualityScore && (
+                                                <span className={`px-2 py-1 rounded text-xs ${getQualityScoreColor(snippet.qualityScore)}`}>
+                                                    🤖 {snippet.qualityScore}/10
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 sm:px-6 flex justify-between">
-                                <div className="flex space-x-3">
-                                    <button
-                                        onClick={() => copyToClipboard(snippet.code)}
-                                        className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 cursor-pointer"
-                                        title="Copy to clipboard"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                        </svg>
-                                        Copy
-                                    </button>
-                                    <Link
-                                        href={`/dashboard/view/${snippet.id}`}
-                                        className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded text-green-700 bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:text-green-300 dark:hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200 cursor-pointer"
-                                        title="View full snippet"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                        View
-                                    </Link>
-                                    <Link
-                                        href={`/dashboard/edit/${snippet.id}`}
-                                        className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 cursor-pointer"
-                                        title="Edit snippet"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                        </svg>
-                                        Edit
-                                    </Link>
+
+                            {/* Card Body */}
+                            <div className="p-4">
+                                {snippet.description && (
+                                    <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">
+                                        {snippet.description}
+                                    </p>
+                                )}
+
+                                {/* Code Preview */}
+                                <div className="bg-gray-900 rounded text-gray-100 p-3 mb-3 overflow-hidden">
+                                    <pre className="text-xs line-clamp-3 whitespace-pre-wrap">
+                                        {snippet.code.substring(0, 150)}
+                                        {snippet.code.length > 150 && '...'}
+                                    </pre>
                                 </div>
-                                <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                    {new Date(snippet.createdAt).toLocaleDateString()}
-                                </span>
+
+                                {/* Tags */}
+                                {(snippet.tags?.length > 0 || snippet.aiTags?.length > 0) && (
+                                    <div className="flex flex-wrap gap-1 mb-3">
+                                        {snippet.tags?.slice(0, 2).map((tag, index) => (
+                                            <button
+                                                key={`manual-${index}`}
+                                                onClick={() => addTagFilter(tag)}
+                                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200 transition-colors"
+                                            >
+                                                {tag}
+                                            </button>
+                                        ))}
+                                        {snippet.aiTags?.slice(0, 2).map((tag, index) => (
+                                            <button
+                                                key={`ai-${index}`}
+                                                onClick={() => addTagFilter(tag)}
+                                                className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 transition-colors"
+                                            >
+                                                🤖 {tag}
+                                            </button>
+                                        ))}
+                                        {(snippet.tags?.length > 2 || snippet.aiTags?.length > 2) && (
+                                            <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs">
+                                                +{(snippet.tags?.length || 0) + (snippet.aiTags?.length || 0) - 4}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* AI Insights Preview */}
+                                {snippet.aiAnalysis && (
+                                    <div className="mb-3 p-2 bg-purple-50 dark:bg-purple-900/20 rounded text-xs">
+                                        <div className="flex items-center gap-1 text-purple-700 dark:text-purple-300">
+                                            🔍 AI Analysis Available
+                                        </div>
+                                        {snippet.aiAnalysis.improvements?.length > 0 && (
+                                            <div className="mt-1 text-gray-600 dark:text-gray-400">
+                                                {snippet.aiAnalysis.improvements.length} improvements suggested
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Card Footer */}
+                            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        {new Date(snippet.createdAt).toLocaleDateString()}
+                                    </span>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => copyToClipboard(snippet.code, snippet.id)}
+                                            className="p-2 text-gray-600 hover:text-green-600 transition-colors"
+                                            title="Copy code"
+                                        >
+                                            {copiedId === snippet.id ? (
+                                                <span className="text-green-600 text-xs">✓</span>
+                                            ) : (
+                                                <FiCopy className="w-4 h-4" />
+                                            )}
+                                        </button>
+                                        <Link
+                                            href={`/dashboard/view/${snippet.id}`}
+                                            className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
+                                            title="View snippet"
+                                        >
+                                            <FiEye className="w-4 h-4" />
+                                        </Link>
+                                        <Link
+                                            href={`/dashboard/edit/${snippet.id}`}
+                                            className="p-2 text-gray-600 hover:text-yellow-600 transition-colors"
+                                            title="Edit snippet"
+                                        >
+                                            <FiEdit className="w-4 h-4" />
+                                        </Link>
+                                        <button
+                                            onClick={() => deleteSnippet(snippet.id)}
+                                            className="p-2 text-gray-600 hover:text-red-600 transition-colors"
+                                            title="Delete snippet"
+                                        >
+                                            <FiTrash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ))}

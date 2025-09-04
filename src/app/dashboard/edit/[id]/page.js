@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { detectLanguage } from "@/utils/snippetUtils";
 import Editor from "@monaco-editor/react";
-import { use } from "react";
+import { detectLanguage, autoCategorizeTags } from "@/utils/snippetUtils";
 
 const languageOptions = [
     { value: "", label: "Auto Detect" },
@@ -28,10 +26,8 @@ const languageOptions = [
     { value: "text", label: "Plain Text" }
 ];
 
-export default function EditSnippetPage({ params: paramsPromise }) {
-    const params = use(paramsPromise);
-    const { id } = params;
-
+export default function EditSnippetPage() {
+    const { id } = useParams();
     const { data: session } = useSession();
     const router = useRouter();
 
@@ -43,382 +39,604 @@ export default function EditSnippetPage({ params: paramsPromise }) {
         tags: []
     });
 
+    const [originalSnippet, setOriginalSnippet] = useState(null);
     const [newTag, setNewTag] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [detectedLanguage, setDetectedLanguage] = useState("");
-    const [editorTheme, setEditorTheme] = useState("light");
 
-    // Fetch the snippet data when the component mounts
+    // NEW AI-RELATED STATE
+    const [aiSuggestions, setAiSuggestions] = useState(null);
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [aiTags, setAiTags] = useState([]);
+    const [showAIPanel, setShowAIPanel] = useState(false);
+    const [hasCodeChanged, setHasCodeChanged] = useState(false);
+    const [showAIComparison, setShowAIComparison] = useState(false);
+
     useEffect(() => {
-        const fetchSnippet = async () => {
-            try {
-                const response = await fetch(`/api/snippets?id=${id}`);
-
-                if (!response.ok) {
-                    throw new Error("Failed to fetch snippet");
-                }
-
-                const data = await response.json();
-
-                setFormData({
-                    title: data.title,
-                    code: data.code,
-                    language: data.language || "",
-                    description: data.description || "",
-                    tags: data.tags || []
-                });
-
-                setDetectedLanguage(data.language || detectLanguage(data.code));
-                setIsLoading(false);
-            } catch (err) {
-                console.error("Error fetching snippet:", err);
-                setError("Failed to load snippet. It may have been deleted or you may not have permission to edit it.");
-                setIsLoading(false);
-            }
-        };
-
-        if (session) {
+        if (id && session) {
             fetchSnippet();
-        }
-
-        // Set editor theme based on system preference
-        if (typeof window !== 'undefined') {
-            const darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            setEditorTheme(darkMode ? 'vs-dark' : 'light');
-
-            // Listen for changes in color scheme preference
-            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-            const handleChange = (e) => {
-                setEditorTheme(e.matches ? 'vs-dark' : 'light');
-            };
-
-            mediaQuery.addEventListener('change', handleChange);
-            return () => mediaQuery.removeEventListener('change', handleChange);
         }
     }, [id, session]);
 
     // Detect language as user types code
     useEffect(() => {
-        if (formData.code) {
+        if (formData.code && formData.language === "") {
             const detected = detectLanguage(formData.code);
             setDetectedLanguage(detected);
-        } else {
-            setDetectedLanguage("");
         }
     }, [formData.code]);
 
+    // Check if code has changed for AI re-analysis
+    useEffect(() => {
+        if (originalSnippet && formData.code !== originalSnippet.code) {
+            setHasCodeChanged(true);
+        } else {
+            setHasCodeChanged(false);
+        }
+    }, [formData.code, originalSnippet]);
+
+    const fetchSnippet = async () => {
+        try {
+            const response = await fetch(`/api/snippets?id=${id}`);
+
+            if (response.ok) {
+                const snippet = await response.json();
+                setOriginalSnippet(snippet);
+                setFormData({
+                    title: snippet.title,
+                    code: snippet.code,
+                    language: snippet.language,
+                    description: snippet.description || "",
+                    tags: snippet.tags || []
+                });
+
+                // Load existing AI data
+                if (snippet.aiAnalysis) {
+                    setAiSuggestions(snippet.aiAnalysis);
+                }
+                if (snippet.aiTags) {
+                    setAiTags(snippet.aiTags);
+                }
+            } else {
+                setError("Failed to fetch snippet");
+            }
+        } catch (error) {
+            console.error("Error fetching snippet:", error);
+            setError("An error occurred while fetching the snippet");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prevState => ({
-            ...prevState,
+        setFormData(prev => ({
+            ...prev,
             [name]: value
         }));
     };
 
     // Handle Monaco Editor code changes
     const handleEditorChange = (value) => {
-        setFormData(prevState => ({
-            ...prevState,
-            code: value
+        setFormData(prev => ({
+            ...prev,
+            code: value || ""
         }));
+    };
+
+    // NEW AI FUNCTIONS
+    const generateAITags = async () => {
+        if (!formData.code.trim()) {
+            alert("Please enter some code first");
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            const response = await fetch('/api/ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'tags',
+                    code: formData.code,
+                    language: formData.language || detectedLanguage
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setAiTags(data.result);
+                setShowAIPanel(true);
+            } else {
+                console.error('AI tag generation failed:', data.error);
+            }
+        } catch (error) {
+            console.error('Error generating AI tags:', error);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const analyzeCodeWithAI = async () => {
+        if (!formData.code.trim()) {
+            alert("Please enter some code first");
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            const response = await fetch('/api/ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'analyze',
+                    code: formData.code,
+                    language: formData.language || detectedLanguage
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setAiSuggestions(data.result);
+                setShowAIPanel(true);
+                setShowAIComparison(true);
+            } else {
+                console.error('AI analysis failed:', data.error);
+            }
+        } catch (error) {
+            console.error('Error analyzing code:', error);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const addAITag = (tag) => {
+        if (!formData.tags.includes(tag)) {
+            setFormData(prev => ({
+                ...prev,
+                tags: [...prev.tags, tag]
+            }));
+        }
     };
 
     const addTag = () => {
         if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
-            setFormData(prevState => ({
-                ...prevState,
-                tags: [...prevState.tags, newTag.trim()]
+            setFormData(prev => ({
+                ...prev,
+                tags: [...prev.tags, newTag.trim()]
             }));
             setNewTag("");
         }
     };
 
     const removeTag = (tagToRemove) => {
-        setFormData(prevState => ({
-            ...prevState,
-            tags: prevState.tags.filter(tag => tag !== tagToRemove)
+        setFormData(prev => ({
+            ...prev,
+            tags: prev.tags.filter(tag => tag !== tagToRemove)
         }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
 
-        if (!formData.title || !formData.code) {
+        if (!session) {
+            setError("You must be logged in to edit snippets");
+            return;
+        }
+
+        if (!formData.title.trim() || !formData.code.trim()) {
             setError("Title and code are required");
             return;
         }
 
         setIsSubmitting(true);
+        setError("");
 
         try {
-            // Use the detected language if none is selected
-            const snippetData = {
-                ...formData,
-                id,
-                language: formData.language || detectedLanguage
+            const finalLanguage = formData.language || detectedLanguage || "text";
+            const finalTags = formData.tags.length > 0 ? formData.tags : autoCategorizeTags(formData.code, finalLanguage);
+
+            // If code changed and we have new AI analysis, include it
+            let updateData = {
+                id: id,
+                title: formData.title,
+                code: formData.code,
+                language: finalLanguage,
+                description: formData.description,
+                tags: finalTags
             };
 
-            const response = await fetch(`/api/snippets`, {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(snippetData)
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || "Failed to update snippet");
+            // Include AI data if code changed or if we have new analysis
+            if (hasCodeChanged || aiSuggestions !== originalSnippet?.aiAnalysis) {
+                updateData.aiAnalysis = aiSuggestions;
+                updateData.qualityScore = aiSuggestions?.qualityScore || null;
             }
 
-            // Redirect to dashboard on success
-            router.push("/dashboard");
-            router.refresh();
+            if (aiTags.length > 0 && JSON.stringify(aiTags) !== JSON.stringify(originalSnippet?.aiTags)) {
+                updateData.aiTags = aiTags;
+            }
 
-        } catch (err) {
-            setError(err.message || "An error occurred while updating the snippet");
-            console.error("Error updating snippet:", err);
+            // Generate fresh AI explanation if code changed significantly
+            if (hasCodeChanged && formData.code.trim()) {
+                try {
+                    const explanationResponse = await fetch('/api/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'explain',
+                            code: formData.code,
+                            language: finalLanguage
+                        })
+                    });
+                    const explanationData = await explanationResponse.json();
+                    if (explanationData.success) {
+                        updateData.aiExplanation = explanationData.result;
+                    }
+                } catch (err) {
+                    console.log('AI explanation failed, continuing without it');
+                }
+            }
+
+            const response = await fetch("/api/snippets", {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(updateData),
+            });
+
+            if (response.ok) {
+                router.push(`/dashboard/view/${id}`);
+            } else {
+                const errorData = await response.json();
+                setError(errorData.message || "Failed to update snippet");
+            }
+        } catch (error) {
+            console.error("Error updating snippet:", error);
+            setError("An error occurred while updating the snippet");
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    if (isLoading) {
+    if (loading) {
         return (
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="flex flex-col items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                    <p className="text-gray-600 dark:text-gray-300">Loading snippet...</p>
+            <div className="max-w-4xl mx-auto p-6">
+                <div className="animate-pulse">
+                    <div className="h-8 bg-gray-300 rounded mb-4"></div>
+                    <div className="h-64 bg-gray-300 rounded"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error && !originalSnippet) {
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                    {error}
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-            <div className="mb-8 flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Snippet</h1>
-                <Link
-                    href="/dashboard"
-                    className="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 flex items-center transition-colors duration-200 cursor-pointer"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                    Back to Dashboard
-                </Link>
-            </div>
-
-            {error && (
-                <div className="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-400 text-red-800 dark:text-red-300 rounded-md p-4">
-                    <div className="flex">
-                        <svg className="h-5 w-5 text-red-400 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                        <p>{error}</p>
+        <div className="max-w-4xl mx-auto p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                        Edit Snippet
+                    </h1>
+                    <div className="flex gap-2">
+                        {hasCodeChanged && (
+                            <div className="px-3 py-2 bg-yellow-100 text-yellow-800 rounded-md text-sm">
+                                ⚠️ Code changed - consider re-analyzing
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={generateAITags}
+                            disabled={isGeneratingAI || !formData.code.trim()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isGeneratingAI ? (
+                                <>🔄 Generating...</>
+                            ) : (
+                                <>🤖 Update AI Tags</>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={analyzeCodeWithAI}
+                            disabled={isGeneratingAI || !formData.code.trim()}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isGeneratingAI ? (
+                                <>🔄 Analyzing...</>
+                            ) : (
+                                <>🔍 Re-analyze Code</>
+                            )}
+                        </button>
                     </div>
                 </div>
-            )}
 
-            <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-                <div>
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Snippet Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        id="title"
-                        name="title"
-                        value={formData.title}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white transition-colors duration-200"
-                        placeholder="A descriptive title for your snippet"
-                        required
-                    />
-                </div>
+                {error && (
+                    <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                        {error}
+                    </div>
+                )}
 
-                <div>
-                    <label htmlFor="code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Code <span className="text-red-500">*</span>
-                    </label>
-                    <div className="border border-gray-300 dark:border-gray-600 rounded-md shadow-md overflow-hidden">
-                        <div className="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600 px-4 py-2 flex justify-between items-center">
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {formData.language || detectedLanguage || "plaintext"}
-                            </span>
-                            <div className="flex space-x-1">
-                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                {/* AI Comparison Panel */}
+                {showAIComparison && originalSnippet?.aiAnalysis && aiSuggestions && (
+                    <div className="mb-6 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg p-4 border">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                            🆚 AI Analysis Comparison
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Previous Analysis
+                                </h4>
+                                <div className="bg-white dark:bg-gray-800 rounded p-3">
+                                    <div className="text-sm">
+                                        Quality: {originalSnippet.aiAnalysis.qualityScore || 'N/A'}/10
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        {originalSnippet.aiAnalysis.improvements?.length || 0} improvements suggested
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    New Analysis
+                                </h4>
+                                <div className="bg-white dark:bg-gray-800 rounded p-3">
+                                    <div className="text-sm">
+                                        Quality: {aiSuggestions.qualityScore || 'N/A'}/10
+                                        {aiSuggestions.qualityScore > (originalSnippet.aiAnalysis.qualityScore || 0) && (
+                                            <span className="ml-2 text-green-600">📈</span>
+                                        )}
+                                        {aiSuggestions.qualityScore < (originalSnippet.aiAnalysis.qualityScore || 0) && (
+                                            <span className="ml-2 text-red-600">📉</span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        {aiSuggestions.improvements?.length || 0} improvements suggested
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <Editor
-                            height="400px"
-                            language={formData.language || detectedLanguage || "plaintext"}
-                            value={formData.code}
-                            onChange={handleEditorChange}
-                            theme={editorTheme}
-                            options={{
-                                minimap: { enabled: false },
-                                fontSize: 14,
-                                scrollBeyondLastLine: false,
-                                automaticLayout: true,
-                                tabSize: 2,
-                                wordWrap: "on",
-                                lineNumbers: "on",
-                                folding: true,
-                                renderLineHighlight: 'all'
-                            }}
-                            className="monaco-editor-enhanced"
+                        <button
+                            type="button"
+                            onClick={() => setShowAIComparison(false)}
+                            className="mt-3 text-sm text-gray-500 hover:text-gray-700"
+                        >
+                            Hide comparison
+                        </button>
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                        <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Title *
+                        </label>
+                        <input
+                            type="text"
+                            id="title"
+                            name="title"
+                            value={formData.title}
+                            onChange={handleChange}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            placeholder="Enter snippet title"
                         />
                     </div>
-                    {detectedLanguage && (
-                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 flex items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                            Detected language: <span className="font-semibold ml-1">{detectedLanguage}</span>
-                        </p>
-                    )}
-                </div>
 
-                <div>
-                    <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Language
-                    </label>
-                    <div className="relative mt-1">
+                    <div>
+                        <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Language
+                        </label>
                         <select
                             id="language"
                             name="language"
                             value={formData.language}
                             onChange={handleChange}
-                            className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white appearance-none cursor-pointer transition-colors duration-200 pr-10"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                         >
                             {languageOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
                             ))}
                         </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-                            <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
+                        {detectedLanguage && !formData.language && (
+                            <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                                Detected: {detectedLanguage}
+                            </p>
+                        )}
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Code *
+                        </label>
+                        <div className="border border-gray-300 rounded-md overflow-hidden">
+                            <Editor
+                                height="400px"
+                                language={formData.language || detectedLanguage || "javascript"}
+                                value={formData.code}
+                                onChange={handleEditorChange}
+                                theme="vs-dark"
+                                options={{
+                                    minimap: { enabled: false },
+                                    fontSize: 14,
+                                    lineNumbers: "on",
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true
+                                }}
+                            />
                         </div>
                     </div>
-                </div>
 
-                <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Description (optional)
-                    </label>
-                    <textarea
-                        id="description"
-                        name="description"
-                        rows="3"
-                        value={formData.description}
-                        onChange={handleChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white transition-colors duration-200"
-                        placeholder="Add a description of what this code does"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Tags (optional)
-                    </label>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                        {formData.tags.map(tag => (
-                            <span
-                                key={tag}
-                                className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-100 dark:border-blue-800"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                </svg>
-                                {tag}
+                    {/* AI Suggestions Panel */}
+                    {showAIPanel && (aiSuggestions || aiTags.length > 0) && (
+                        <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-4 border">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                    🤖 Updated AI Suggestions
+                                </h3>
                                 <button
                                     type="button"
-                                    onClick={() => removeTag(tag)}
-                                    className="ml-1.5 inline-flex text-blue-400 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-100 cursor-pointer transition-colors duration-200"
+                                    onClick={() => setShowAIPanel(false)}
+                                    className="text-gray-500 hover:text-gray-700"
                                 >
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                    <span className="sr-only">Remove tag</span>
+                                    ✕
                                 </button>
-                            </span>
-                        ))}
-                    </div>
-                    <div className="flex">
-                        <input
-                            type="text"
-                            value={newTag}
-                            onChange={(e) => setNewTag(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 dark:text-white transition-colors duration-200"
-                            placeholder="Add a tag"
+                            </div>
+
+                            {aiTags.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                        Updated AI Tags:
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {aiTags.map((tag, index) => (
+                                            <button
+                                                key={index}
+                                                type="button"
+                                                onClick={() => addAITag(tag)}
+                                                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition-colors"
+                                            >
+                                                + {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {aiSuggestions && (
+                                <div>
+                                    <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                        Updated Quality Score: {aiSuggestions.qualityScore}/10
+                                        {originalSnippet?.qualityScore && (
+                                            <span className={`ml-2 text-sm ${aiSuggestions.qualityScore > originalSnippet.qualityScore
+                                                    ? 'text-green-600'
+                                                    : aiSuggestions.qualityScore < originalSnippet.qualityScore
+                                                        ? 'text-red-600'
+                                                        : 'text-gray-600'
+                                                }`}>
+                                                ({aiSuggestions.qualityScore > originalSnippet.qualityScore ? '+' : ''}
+                                                {aiSuggestions.qualityScore - originalSnippet.qualityScore})
+                                            </span>
+                                        )}
+                                    </h4>
+
+                                    {aiSuggestions.improvements?.length > 0 && (
+                                        <div className="mb-3">
+                                            <h5 className="font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                New Improvements:
+                                            </h5>
+                                            <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400">
+                                                {aiSuggestions.improvements.map((item, index) => (
+                                                    <li key={index}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {aiSuggestions.security?.length > 0 && (
+                                        <div className="mb-3">
+                                            <h5 className="font-medium text-red-700 dark:text-red-400 mb-1">
+                                                Security Issues:
+                                            </h5>
+                                            <ul className="list-disc list-inside text-sm text-red-600 dark:text-red-400">
+                                                {aiSuggestions.security.map((item, index) => (
+                                                    <li key={index}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Description
+                        </label>
+                        <textarea
+                            id="description"
+                            name="description"
+                            value={formData.description}
+                            onChange={handleChange}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            placeholder="Enter snippet description"
                         />
+                    </div>
+
+                    <div>
+                        <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Tags
+                        </label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                value={newTag}
+                                onChange={(e) => setNewTag(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                placeholder="Add a tag"
+                            />
+                            <button
+                                type="button"
+                                onClick={addTag}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                            >
+                                Add
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {formData.tags.map((tag, index) => (
+                                <span
+                                    key={index}
+                                    className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                >
+                                    {tag}
+                                    <button
+                                        type="button"
+                                        onClick={() => removeTag(tag)}
+                                        className="ml-1 text-blue-600 hover:text-blue-800"
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSubmitting ? "Updating..." : "Update Snippet"}
+                        </button>
                         <button
                             type="button"
-                            onClick={addTag}
-                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-r-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 cursor-pointer"
+                            onClick={() => router.push(`/dashboard/view/${id}`)}
+                            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                            Add
+                            Cancel
                         </button>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Tags help organize your snippets.
-                    </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <Link
-                        href="/dashboard"
-                        className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 cursor-pointer"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Cancel
-                    </Link>
-                    <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors duration-200 cursor-pointer"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                Save Changes
-                            </>
-                        )}
-                    </button>
-                </div>
-            </form>
-
-            <style jsx global>{`
-                /* Enhanced editor styles */
-                .monaco-editor-enhanced {
-                    border-radius: 0 0 6px 6px;
-                }
-                /* Add any additional global styles here */
-            `}</style>
+                </form>
+            </div>
         </div>
     );
 }

@@ -1,7 +1,9 @@
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
-import prisma from "@/lib/prisma";
-import { autoCategorizeTags, detectLanguage } from "@/utils/snippetUtils";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 // GET: Fetch all snippets for the current user or a specific snippet by ID
 export async function GET(request) {
@@ -9,10 +11,7 @@ export async function GET(request) {
         const session = await getServerSession(authOptions);
 
         if (!session) {
-            return Response.json(
-                { message: "Unauthorized" },
-                { status: 401 }
-            );
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { searchParams } = new URL(request.url);
@@ -54,11 +53,11 @@ export async function GET(request) {
             }
         });
 
-        return Response.json({ snippets });
+        return NextResponse.json(snippets);
     } catch (error) {
         console.error("Error fetching snippets:", error);
-        return Response.json(
-            { message: "Failed to fetch snippets" },
+        return NextResponse.json(
+            { error: "Failed to fetch snippets" },
             { status: 500 }
         );
     }
@@ -70,47 +69,51 @@ export async function POST(request) {
         const session = await getServerSession(authOptions);
 
         if (!session) {
-            return Response.json(
-                { message: "Unauthorized" },
-                { status: 401 }
-            );
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { title, code, language: providedLanguage, description, tags: manualTags = [] } = await request.json();
+        const body = await request.json();
+        const {
+            title,
+            code,
+            language,
+            description,
+            tags,
+            // NEW AI FIELDS
+            aiAnalysis,
+            aiTags,
+            aiExplanation,
+            qualityScore
+        } = body;
 
-        // Validate input
         if (!title || !code) {
-            return Response.json(
-                { message: "Title and code are required" },
+            return NextResponse.json(
+                { error: "Title and code are required" },
                 { status: 400 }
             );
         }
-
-        // Auto-detect language if not provided
-        const language = providedLanguage || detectLanguage(code);
-
-        // Auto-categorize tags
-        const autoTags = autoCategorizeTags(code, language);
-
-        // Merge manual and auto tags, ensuring uniqueness
-        const allTags = [...new Set([...manualTags, ...autoTags])];
 
         const snippet = await prisma.snippet.create({
             data: {
                 title,
                 code,
-                language,
-                description,
-                tags: allTags,
+                language: language || "text",
+                description: description || "",
+                tags: tags || [],
+                // NEW AI FIELDS
+                aiAnalysis: aiAnalysis || null,
+                aiTags: aiTags || [],
+                aiExplanation: aiExplanation || null,
+                qualityScore: qualityScore || null,
                 userId: session.user.id
             }
         });
 
-        return Response.json({ snippet }, { status: 201 });
+        return NextResponse.json(snippet, { status: 201 });
     } catch (error) {
         console.error("Error creating snippet:", error);
-        return Response.json(
-            { message: "Failed to create snippet" },
+        return NextResponse.json(
+            { error: "Failed to create snippet" },
             { status: 500 }
         );
     }
@@ -122,66 +125,68 @@ export async function PATCH(request) {
         const session = await getServerSession(authOptions);
 
         if (!session) {
-            return Response.json(
-                { message: "Unauthorized" },
-                { status: 401 }
-            );
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { id, title, code, language: providedLanguage, description, tags: manualTags = [] } = await request.json();
+        const body = await request.json();
+        const {
+            id,
+            title,
+            code,
+            language,
+            description,
+            tags,
+            // NEW AI FIELDS
+            aiAnalysis,
+            aiTags,
+            aiExplanation,
+            qualityScore
+        } = body;
 
-        // Validate input
-        if (!id || !title || !code) {
-            return Response.json(
-                { message: "ID, title, and code are required" },
+        if (!id) {
+            return NextResponse.json(
+                { error: "Snippet ID is required" },
                 { status: 400 }
             );
         }
 
-        // Check if snippet exists and belongs to user
-        const existingSnippet = await prisma.snippet.findUnique({
-            where: { id }
+        // Check if snippet belongs to user
+        const existingSnippet = await prisma.snippet.findFirst({
+            where: {
+                id: id,
+                userId: session.user.id
+            }
         });
 
         if (!existingSnippet) {
-            return Response.json(
-                { message: "Snippet not found" },
+            return NextResponse.json(
+                { error: "Snippet not found or unauthorized" },
                 { status: 404 }
             );
         }
 
-        if (existingSnippet.userId !== session.user.id) {
-            return Response.json(
-                { message: "Not authorized to update this snippet" },
-                { status: 403 }
-            );
-        }
-
-        // Auto-detect language if not provided
-        const language = providedLanguage || detectLanguage(code);
-
-        // Auto-categorize tags
-        const autoTags = autoCategorizeTags(code, language);
-
-        // Merge manual and auto tags, ensuring uniqueness
-        const allTags = [...new Set([...manualTags, ...autoTags])];
-
         const updatedSnippet = await prisma.snippet.update({
-            where: { id },
+            where: { id: id },
             data: {
-                title,
-                code,
-                language,
-                description,
-                tags: allTags
+                title: title || existingSnippet.title,
+                code: code || existingSnippet.code,
+                language: language || existingSnippet.language,
+                description: description !== undefined ? description : existingSnippet.description,
+                tags: tags || existingSnippet.tags,
+                // NEW AI FIELDS - only update if provided
+                ...(aiAnalysis !== undefined && { aiAnalysis }),
+                ...(aiTags !== undefined && { aiTags }),
+                ...(aiExplanation !== undefined && { aiExplanation }),
+                ...(qualityScore !== undefined && { qualityScore }),
+                updatedAt: new Date()
             }
         });
 
-        return Response.json({ snippet: updatedSnippet });
+        return NextResponse.json(updatedSnippet);
     } catch (error) {
         console.error("Error updating snippet:", error);
-        return Response.json(
-            { message: "Failed to update snippet" },
+        return NextResponse.json(
+            { error: "Failed to update snippet" },
             { status: 500 }
         );
     }
@@ -193,53 +198,43 @@ export async function DELETE(request) {
         const session = await getServerSession(authOptions);
 
         if (!session) {
-            return Response.json(
-                { message: "Unauthorized" },
-                { status: 401 }
-            );
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
         if (!id) {
-            return Response.json(
-                { message: "Snippet ID is required" },
+            return NextResponse.json(
+                { error: "Snippet ID is required" },
                 { status: 400 }
             );
         }
 
-        // Check if snippet exists and belongs to user
-        const snippet = await prisma.snippet.findUnique({
-            where: { id }
+        // Check if snippet belongs to user
+        const snippet = await prisma.snippet.findFirst({
+            where: {
+                id: id,
+                userId: session.user.id
+            }
         });
 
         if (!snippet) {
-            return Response.json(
-                { message: "Snippet not found" },
+            return NextResponse.json(
+                { error: "Snippet not found or unauthorized" },
                 { status: 404 }
             );
         }
 
-        if (snippet.userId !== session.user.id) {
-            return Response.json(
-                { message: "Not authorized to delete this snippet" },
-                { status: 403 }
-            );
-        }
-
         await prisma.snippet.delete({
-            where: { id }
+            where: { id: id }
         });
 
-        return Response.json(
-            { message: "Snippet deleted successfully" },
-            { status: 200 }
-        );
+        return NextResponse.json({ message: "Snippet deleted successfully" });
     } catch (error) {
         console.error("Error deleting snippet:", error);
-        return Response.json(
-            { message: "Failed to delete snippet" },
+        return NextResponse.json(
+            { error: "Failed to delete snippet" },
             { status: 500 }
         );
     }
