@@ -178,7 +178,7 @@ const fetchData = async (url, options = {}) => {
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Intelligent Search & Discovery</h3>
               <p className="text-gray-600 dark:text-gray-400">
-                AI-enhanced search understands context and intent. Find snippets using natural language queries like "authentication middleware" or "async error handling".
+                {`AI-enhanced search understands context and intent. Find snippets using natural language queries like "authentication middleware" or "async error handling".`}
               </p>
             </div>
 
@@ -278,7 +278,7 @@ const fetchData = async (url, options = {}) => {
                 </div>
               </div>
               <p className="text-gray-600 dark:text-gray-300">
-                &quot;The AI categorization is incredible! It understands my React patterns better than I expected. SnipStash has become my development companion.&quot;
+                {`"The AI categorization is incredible! It understands my React patterns better than I expected. SnipStash has become my development companion."`}
               </p>
               <div className="mt-4 flex text-yellow-400">
                 <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
@@ -294,7 +294,7 @@ const fetchData = async (url, options = {}) => {
                 </div>
               </div>
               <p className="text-gray-600 dark:text-gray-300">
-                &quot;The AI-powered search is game-changing! I can find complex algorithms using natural language. It's like having an intelligent coding assistant.&quot;
+                {`"The AI-powered search is game-changing! I can find complex algorithms using natural language. It's like having an intelligent coding assistant."`}
               </p>
               <div className="mt-4 flex text-yellow-400">
                 <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
@@ -310,7 +310,7 @@ const fetchData = async (url, options = {}) => {
                 </div>
               </div>
               <p className="text-gray-600 dark:text-gray-300">
-                &quot;SnipStash AI suggests improvements to my code patterns and helps me discover better implementations. It's revolutionized my workflow!&quot;
+                {`"SnipStash AI suggests improvements to my code patterns and helps me discover better implementations. It's revolutionized my workflow!"`}
               </p>
               <div className="mt-4 flex text-yellow-400">
                 <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
